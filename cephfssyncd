@@ -17,6 +17,16 @@ getrctime(){
     local ctime=$(getfattr --absolute-names -n ceph.dir.rctime $1 --only-values | cut -d. -f$2)
     echo "$ctime"
 }
+getsubdirs(){
+    # getsubdir <directory> 
+    local subdir=$(getfattr --absolute-names -n ceph.dir.subdir $1 --only-values)
+    echo "$subdir"
+}
+getfiles(){
+    # getfiles <directory> 
+    local subdir=$(getfattr --absolute-names -n ceph.dir.files $1 --only-values)
+    echo "$iles"
+}
 takesnap(){
     local RCTIME_1=$1
     SND_SYNC_SNAP_DIR="$SND_SYNC_DIR/.snap/sync_$RCTIME_1"
@@ -36,8 +46,11 @@ formattime(){
     echo $TIME
 }
 log(){
-    if [ "$DEBUG" == "true" ] && [ "$" ];then
-        echo $1
+    # log <message> <log_level>
+    if [ $LOG_LEVEL -gt 0 ];then
+        if [  "$2" -lt $(( LOG_LEVEL + 1 )) ];then
+            echo $1
+        fi
     fi
 }
 main(){
@@ -46,24 +59,24 @@ main(){
     for dir in $DIR/*;do
         if [ -d $dir ];then
             local RCTIME_2=$(getrctime $dir 1)
-            log "parent:$(formattime $RCTIME_0) dir:$(formattime $RCTIME_2):$dir"  
+            log "parent:$(formattime $RCTIME_0) dir:$(formattime $RCTIME_2):$dir" 2 
             if [ "$RCTIME_2" -eq "$RCTIME_0" ];then
-                log "CHANGE DETECTED IN $dir. SYNC ONLY FILES IN DIR"
-                log "cephfssync $dir $SND_SYNC_DIR" 
-                log "DECEND INTO NEXT SUBDIRECTORY AND REPEAT"
+                log "CHANGE DETECTED IN $dir. SYNC ONLY FILES IN DIR" 1
+                log "cephfssync $dir $SND_SYNC_DIR" 2
+                log "DECEND INTO NEXT SUBDIRECTORY AND REPEAT" 2
                 main $RCTIME_0 $dir
             elif [ "$RCTIME_2" -lt "$RCTIME_0" ];then
-                log "NO CHANGE DETECTED IN $dir OR BELOW. MOVE ON"
+                log "NO CHANGE DETECTED IN $dir OR BELOW. MOVE ON" 1
             elif [ "$RCTIME_2" -gt "$RCTIME_0" ];then
-                log "THIS SHOULD NEVER HAPPEN"
+                log "THIS SHOULD NEVER HAPPEN" 2
             fi
         fi
     done
 }
 
-log "started"
+log "started" 1
 while sleep $SYNC_FREQ ; do
-    log "running : $SND_SYNC_DIR->$RECV_SYNC_HOST:$RECV_SYNC_DIR"
+    log "running : $SND_SYNC_DIR->$RECV_SYNC_HOST:$RECV_SYNC_DIR" 1
     ### Every SYNC_FREQ seconds daemon will check for changes.
     ## 
     # IF THERE IS NO PAST RCTIME THE ASSUME ZER0
@@ -72,18 +85,18 @@ while sleep $SYNC_FREQ ; do
     # OF THE TOP LEVEL DIR WILL START SUBDIR SYNCS ASYNCHROUNSLY WHEN CHANGES OCCUR
     # RECOMMENDED TO LET A FULL SYNC GO FOR FRIST RUN (i.e RCTIME_0=0)  
     if [ -e /var/lib/ceph/cephfssync/last_rctime ];then
-        log "last_rctime exists, init RCTIME=last_rctime"
+        log "last_rctime exists, init RCTIME=last_rctime" 2
         RCTIME_0=$(cat /var/lib/ceph/cephfssync/last_rctime)
     else
-        log "last_rctime does not exist, init RCTIME=0"
+        log "last_rctime does not exist, init RCTIME=0" 2
         RCTIME_0=0
         echo "$RCTIME_0" > /var/lib/ceph/cephfssync/last_rctime
     fi
-    log "rctime_0 : $RCTIME_0 "
+    log "rctime_0 : $RCTIME_0 " 2
 
     RCTIME_1=$(getrctime $SND_SYNC_DIR 1)
     echo "$RCTIME_1" > /var/lib/ceph/cephfssync/last_rctime
-    log "rctime_1 : $RCTIME_1 "
+    log "rctime_1 : $RCTIME_1 " 2
     
     if [ "$RCTIME_1" -gt "$RCTIME_0" ];then
         #SND_SYNC_SNAP_DIR=$(takesnap $RCTIME_1)
