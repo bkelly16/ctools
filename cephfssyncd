@@ -1,0 +1,102 @@
+#!/bin/bash
+# Brett Kelly
+
+mkdir -p /var/lib/ceph/cephfssync/
+source ~/.cephfs/cephfssyncd.conf
+
+## CHECKS
+# check cluster membership & permission
+# check cephfs is mounted.
+# check recv'r connection
+# check recv FS exists and is writable
+# turn on snapshots
+
+## FUNCTIONS
+getrctime(){
+    # getrctime <directory> <1||2>
+    local ctime=$(getfattr --absolute-names -n ceph.dir.rctime $1 --only-values | cut -d. -f$2)
+    echo "$ctime"
+}
+takesnap(){
+    local RCTIME_1=$1
+    SND_SYNC_SNAP_DIR="$SND_SYNC_DIR/.snap/sync_$RCTIME_1"
+    mkdir $SND_SYNC_SNAP_DIR
+    echo $SND_SYNC_SNAP_DIR
+}
+removesnap(){
+    # FOR DEV ONLY
+    # IN PRACTISE ONLY REMOVE SNAP AFTER RSYNC TASK IS FINISHED
+    local SND_SYNC_SNAP_DIR=$1
+    rmdir $SND_SYNC_SNAP_DIR
+    echo $?
+}
+formattime(){
+    local EPOCH=$1
+    local TIME=$(date -d @$EPOCH '+%Y-%m-%d %H:%M:%S')
+    echo $TIME
+}
+log(){
+    if [ "$DEBUG" == "true" ] && [ "$" ];then
+        echo $1
+    fi
+}
+main(){
+    local RCTIME_0=$1
+    local DIR=$2
+    for dir in $DIR/*;do
+        if [ -d $dir ];then
+            local RCTIME_2=$(getrctime $dir 1)
+            log "parent:$(formattime $RCTIME_0) dir:$(formattime $RCTIME_2):$dir"  
+            if [ "$RCTIME_2" -eq "$RCTIME_0" ];then
+                log "CHANGE DETECTED IN $dir. SYNC ONLY FILES IN DIR"
+                log "cephfssync $dir $SND_SYNC_DIR" 
+                log "DECEND INTO NEXT SUBDIRECTORY AND REPEAT"
+                main $RCTIME_0 $dir
+            elif [ "$RCTIME_2" -lt "$RCTIME_0" ];then
+                log "NO CHANGE DETECTED IN $dir OR BELOW. MOVE ON"
+            elif [ "$RCTIME_2" -gt "$RCTIME_0" ];then
+                log "THIS SHOULD NEVER HAPPEN"
+            fi
+        fi
+    done
+}
+
+log "started"
+while sleep $SYNC_FREQ ; do
+    log "running : $SND_SYNC_DIR->$RECV_SYNC_HOST:$RECV_SYNC_DIR"
+    ### Every SYNC_FREQ seconds daemon will check for changes.
+    ## 
+    # IF THERE IS NO PAST RCTIME THE ASSUME ZER0
+    # SETTING RCTIME_0 TO ZERO WILL TRIGGER A SYNC OF THE WHOLE FS
+    # SETTING IT TO THE CURRENT RCTIME 
+    # OF THE TOP LEVEL DIR WILL START SUBDIR SYNCS ASYNCHROUNSLY WHEN CHANGES OCCUR
+    # RECOMMENDED TO LET A FULL SYNC GO FOR FRIST RUN (i.e RCTIME_0=0)  
+    if [ -e /var/lib/ceph/cephfssync/last_rctime ];then
+        log "last_rctime exists, init RCTIME=last_rctime"
+        RCTIME_0=$(cat /var/lib/ceph/cephfssync/last_rctime)
+    else
+        log "last_rctime does not exist, init RCTIME=0"
+        RCTIME_0=0
+        echo "$RCTIME_0" > /var/lib/ceph/cephfssync/last_rctime
+    fi
+    log "rctime_0 : $RCTIME_0 "
+
+    RCTIME_1=$(getrctime $SND_SYNC_DIR 1)
+    echo "$RCTIME_1" > /var/lib/ceph/cephfssync/last_rctime
+    log "rctime_1 : $RCTIME_1 "
+    
+    if [ "$RCTIME_1" -gt "$RCTIME_0" ];then
+        #SND_SYNC_SNAP_DIR=$(takesnap $RCTIME_1)
+        main $RCTIME_1 $SND_SYNC_DIR
+        #if [ $(removesnap $SND_SYNC_DIR) -gt 0 ];then
+        #    log "Failed to remove snapshot $SND_SYNC_DIR"
+        #else
+        #    log "Removed snapshot $SND_SYNC_DIR"
+        #fi
+    fi
+
+    # If changes were detected kick off parallel rsync of that dir to the recv
+    # If directory is already currently syncing dont start again
+done
+
+
