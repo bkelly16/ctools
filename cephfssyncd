@@ -47,10 +47,8 @@ formattime(){
 }
 log(){
     # log <message> <log_level>
-    if [ $LOG_LEVEL -gt 0 ];then
-        if [  "$2" -lt $(( LOG_LEVEL + 1 )) ];then
+    if [  "$2" -lt $(( LOG_LEVEL + 1 )) ];then
             echo $1
-        fi
     fi
 }
 main(){
@@ -61,22 +59,22 @@ main(){
             local RCTIME_2=$(getrctime $dir 1)
             log "parent:$(formattime $RCTIME_0) dir:$(formattime $RCTIME_2):$dir" 2 
             if [ "$RCTIME_2" -eq "$RCTIME_0" ];then
-                log "CHANGE DETECTED IN $dir. SYNC ONLY FILES IN DIR" 1
-                log "cephfssync $dir $SND_SYNC_DIR" 2
-                log "DECEND INTO NEXT SUBDIRECTORY AND REPEAT" 2
+                log "CHANGE DETECTED IN $dir" 0
+                cephfssync $dir $RECV_SYNC_HOST $LOG_LEVEL &
                 main $RCTIME_0 $dir
             elif [ "$RCTIME_2" -lt "$RCTIME_0" ];then
-                log "NO CHANGE DETECTED IN $dir OR BELOW. MOVE ON" 1
+                log "NO CHANGE DETECTED IN $dir OR BELOW" 1
             elif [ "$RCTIME_2" -gt "$RCTIME_0" ];then
-                log "THIS SHOULD NEVER HAPPEN" 2
+                log "$dir WAS MODIFIED AFTER STARTING CHECK. WAIT FOR NEXT CYCLE" 0
             fi
         fi
     done
 }
 
-log "started" 1
+# START HERE
+log "started" 0
 while sleep $SYNC_FREQ ; do
-    log "running : $SND_SYNC_DIR->$RECV_SYNC_HOST:$RECV_SYNC_DIR" 1
+    log "scanning : $SND_SYNC_DIR" 1
     ### Every SYNC_FREQ seconds daemon will check for changes.
     ## 
     # IF THERE IS NO PAST RCTIME THE ASSUME ZER0
@@ -99,17 +97,15 @@ while sleep $SYNC_FREQ ; do
     log "rctime_1 : $RCTIME_1 " 2
     
     if [ "$RCTIME_1" -gt "$RCTIME_0" ];then
-        #SND_SYNC_SNAP_DIR=$(takesnap $RCTIME_1)
+        cephfssync $SND_SYNC_DIR $RECV_SYNC_HOST $LOG_LEVEL &
         main $RCTIME_1 $SND_SYNC_DIR
-        #if [ $(removesnap $SND_SYNC_DIR) -gt 0 ];then
-        #    log "Failed to remove snapshot $SND_SYNC_DIR"
-        #else
-        #    log "Removed snapshot $SND_SYNC_DIR"
-        #fi
     fi
 
     # If changes were detected kick off parallel rsync of that dir to the recv
     # If directory is already currently syncing dont start again
+    # Dont start too many rsync tasks. Limit to CPU core
+    #     cpu_count=$(cat /proc/cpuinfo|grep processor | wc -l)
+    #     let max_threads=cpu_count*30
 done
 
 
