@@ -14,31 +14,21 @@ source ~/.cephfs/cephfssyncd.conf
 ## FUNCTIONS
 getrctime(){
     # getrctime <directory> <1||2>
+    # Returns recursive ctime of <directory>
     local ctime=$(getfattr --absolute-names -n ceph.dir.rctime $1 --only-values | cut -d. -f$2)
     echo "$ctime"
 }
 getsubdirs(){
     # getsubdir <directory> 
+    # Returns number of subdirs in <directory>
     local subdir=$(getfattr --absolute-names -n ceph.dir.subdir $1 --only-values)
     echo "$subdir"
 }
 getfiles(){
     # getfiles <directory> 
-    local subdir=$(getfattr --absolute-names -n ceph.dir.files $1 --only-values)
-    echo "$iles"
-}
-takesnap(){
-    local RCTIME_1=$1
-    SND_SYNC_SNAP_DIR="$SND_SYNC_DIR/.snap/sync_$RCTIME_1"
-    mkdir $SND_SYNC_SNAP_DIR
-    echo $SND_SYNC_SNAP_DIR
-}
-removesnap(){
-    # FOR DEV ONLY
-    # IN PRACTISE ONLY REMOVE SNAP AFTER RSYNC TASK IS FINISHED
-    local SND_SYNC_SNAP_DIR=$1
-    rmdir $SND_SYNC_SNAP_DIR
-    echo $?
+    # Return number of files in <directory>
+    local files=$(getfattr --absolute-names -n ceph.dir.files $1 --only-values)
+    echo "$files"
 }
 formattime(){
     local EPOCH=$1
@@ -60,7 +50,9 @@ main(){
             log "parent:$(formattime $RCTIME_0) dir:$(formattime $RCTIME_2):$dir" 2 
             if [ "$RCTIME_2" -eq "$RCTIME_0" ];then
                 log "CHANGE DETECTED IN $dir" 0
-                cephfssync $dir $RECV_SYNC_HOST $LOG_LEVEL &
+                #if [ $(getfiles $dir) -gt 0 ];then 
+                    cephfssync $dir $RECV_SYNC_HOST $RECV_SYNC_DIR &
+                #fi
                 main $RCTIME_0 $dir
             elif [ "$RCTIME_2" -lt "$RCTIME_0" ];then
                 log "NO CHANGE DETECTED IN $dir OR BELOW" 1
@@ -74,10 +66,10 @@ main(){
 # START HERE
 log "started" 0
 while sleep $SYNC_FREQ ; do
-    log "scanning : $SND_SYNC_DIR" 1
+    log "watching : $SND_SYNC_DIR" 1
     ### Every SYNC_FREQ seconds daemon will check for changes.
     ## 
-    # IF THERE IS NO PAST RCTIME THE ASSUME ZER0
+    # IF THERE IS NO PAST RCTIME THEN ASSUME ZER0
     # SETTING RCTIME_0 TO ZERO WILL TRIGGER A SYNC OF THE WHOLE FS
     # SETTING IT TO THE CURRENT RCTIME 
     # OF THE TOP LEVEL DIR WILL START SUBDIR SYNCS ASYNCHROUNSLY WHEN CHANGES OCCUR
@@ -88,7 +80,7 @@ while sleep $SYNC_FREQ ; do
     else
         log "last_rctime does not exist, init RCTIME=0" 2
         RCTIME_0=0
-        echo "$RCTIME_0" > /var/lib/ceph/cephfssync/last_rctime
+        #echo "$RCTIME_0" > /var/lib/ceph/cephfssync/last_rctime
     fi
     log "rctime_0 : $RCTIME_0 " 2
 
@@ -97,13 +89,17 @@ while sleep $SYNC_FREQ ; do
     log "rctime_1 : $RCTIME_1 " 2
     
     if [ "$RCTIME_1" -gt "$RCTIME_0" ];then
-        cephfssync $SND_SYNC_DIR $RECV_SYNC_HOST $LOG_LEVEL &
+        log "CHANGE DETECTED IN $SND_SYNC_DIR" 0
+        #if [ $(getfiles $SND_SYNC_DIR) ];then
+            cephfssync $SND_SYNC_DIR $RECV_SYNC_HOST $RECV_SYNC_DIR &
+        #fi
         main $RCTIME_1 $SND_SYNC_DIR
     fi
 
-    # If changes were detected kick off parallel rsync of that dir to the recv
+    # If changes were detected kick off (parallel)? rsync of that dir to the recv. 
+    # Wait 1 second after starting rsync to ensure directory is created so next level doesnt fail
     # If directory is already currently syncing dont start again
-    # Dont start too many rsync tasks. Limit to CPU core
+    # Dont start too many rsync tasks at once. Limit based on # CPU thread
     #     cpu_count=$(cat /proc/cpuinfo|grep processor | wc -l)
     #     let max_threads=cpu_count*30
 done

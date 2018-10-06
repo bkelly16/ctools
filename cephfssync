@@ -1,32 +1,25 @@
 #!/bin/bash
 LOCAL_DIR=$1
 RECV_HOST=$2
-LOG_LEVEL=$3
+RECV_DIR=$3$LOCAL_DIR
+echo $RECV_DIR
 
-RECV_DIR=$LOCAL_DIR
-
-log(){
-    # log <message> <log_level>
-    if [  "$2" -lt $(( LOG_LEVEL + 1 )) ];then
-            echo $1
-    fi
-}
-
-debug(){
+simsync(){
     i=0
     while sleep 5 ; do
         if [ $i -eq 4 ];then
             echo "All done with $LOCAL_DIR"
             exit 0
         fi
-        log "$(basename $0) $LOCAL_DIR still working"
+        echo "$(basename $0) $LOCAL_DIR still working"
         echo "rsync -a -f '- /*/*/' $LOCAL_DIR $RECV_HOST:$RECV_DIR" 
         let i=i+1
     done
 }
-debug
-
-
-
-
 #echo "ls -1 $LOCAL_DIR | xargs -I {} -P 5 -n 1 rsync -avh --progress $LOCAL_DIR/{} $RECV_DIR"
+
+#simsync
+
+#rsync -d -f '- /*/*/' $LOCAL_DIR $RECV_HOST:$RECV_DIR
+echo "rsync -a --no-r -d -f '- /*/*/' $LOCAL_DIR $RECV_HOST:$RECV_DIR"
+rsync -a --no-r -d -f '- /*/*/' $LOCAL_DIR $RECV_HOST:$RECV_DIR
