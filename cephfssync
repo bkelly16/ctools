@@ -1,25 +1,16 @@
 #!/bin/bash
 LOCAL_DIR=$1
 RECV_HOST=$2
-RECV_DIR=$3$LOCAL_DIR
-echo $RECV_DIR
-
-simsync(){
-    i=0
-    while sleep 5 ; do
-        if [ $i -eq 4 ];then
-            echo "All done with $LOCAL_DIR"
-            exit 0
-        fi
-        echo "$(basename $0) $LOCAL_DIR still working"
-        echo "rsync -a -f '- /*/*/' $LOCAL_DIR $RECV_HOST:$RECV_DIR" 
-        let i=i+1
-    done
-}
+RECV_DIR=$3
+MODE=$4
 #echo "ls -1 $LOCAL_DIR | xargs -I {} -P 5 -n 1 rsync -avh --progress $LOCAL_DIR/{} $RECV_DIR"
 
-#simsync
+if [ "$MODE" == "init" ];then
+    rsync -a -f "+ */" -f "- *" $LOCAL_DIR $RECV_HOST:$RECV_DIR
+    echo "rsync -a -f "+ */" -f "- *" $LOCAL_DIR $RECV_HOST:$RECV_DIR"
+elif [ "$MODE" == "sync" ];then
+    rsync -av -f "- /*/*/" $LOCAL_DIR/ $RECV_HOST:$RECV_DIR$LOCAL_DIR
+    echo "rsync -av -f "- /*/*/" $LOCAL_DIR/ $RECV_HOST:$RECV_DIR$LOCAL_DIR"
+fi
 
-#rsync -d -f '- /*/*/' $LOCAL_DIR $RECV_HOST:$RECV_DIR
-echo "rsync -a --no-r -d -f '- /*/*/' $LOCAL_DIR $RECV_HOST:$RECV_DIR"
-rsync -a --no-r -d -f '- /*/*/' $LOCAL_DIR $RECV_HOST:$RECV_DIR
+

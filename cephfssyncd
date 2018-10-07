@@ -46,17 +46,17 @@ main(){
     local DIR=$2
     for dir in $DIR/*;do
         if [ -d $dir ];then
-            local RCTIME_2=$(getrctime $dir 1)
-            log "parent:$(formattime $RCTIME_0) dir:$(formattime $RCTIME_2):$dir" 2 
-            if [ "$RCTIME_2" -eq "$RCTIME_0" ];then
+            local RCTIME_1=$(getrctime $dir 1)
+            log "parent:$(formattime $RCTIME_0) dir:$(formattime $RCTIME_1):$dir" 2 
+            if [ "$RCTIME_1" -eq "$RCTIME_0" ];then
                 log "CHANGE DETECTED IN $dir" 0
-                #if [ $(getfiles $dir) -gt 0 ];then 
-                    cephfssync $dir $RECV_SYNC_HOST $RECV_SYNC_DIR &
-                #fi
+                if [ $(getfiles $dir) -gt 0 ];then 
+                    cephfssync $dir $RECV_SYNC_HOST $RECV_SYNC_DIR sync &
+                fi
                 main $RCTIME_0 $dir
-            elif [ "$RCTIME_2" -lt "$RCTIME_0" ];then
+            elif [ "$RCTIME_1" -lt "$RCTIME_0" ];then
                 log "NO CHANGE DETECTED IN $dir OR BELOW" 1
-            elif [ "$RCTIME_2" -gt "$RCTIME_0" ];then
+            elif [ "$RCTIME_1" -gt "$RCTIME_0" ];then
                 log "$dir WAS MODIFIED AFTER STARTING CHECK. WAIT FOR NEXT CYCLE" 0
             fi
         fi
@@ -90,9 +90,10 @@ while sleep $SYNC_FREQ ; do
     
     if [ "$RCTIME_1" -gt "$RCTIME_0" ];then
         log "CHANGE DETECTED IN $SND_SYNC_DIR" 0
-        #if [ $(getfiles $SND_SYNC_DIR) ];then
-            cephfssync $SND_SYNC_DIR $RECV_SYNC_HOST $RECV_SYNC_DIR &
-        #fi
+        cephfssync $SND_SYNC_DIR $RECV_SYNC_HOST $RECV_SYNC_DIR init
+        if [ $(getfiles $SND_SYNC_DIR) -gt 0 ];then
+            cephfssync $SND_SYNC_DIR $RECV_SYNC_HOST $RECV_SYNC_DIR sync &
+        fi
         main $RCTIME_1 $SND_SYNC_DIR
     fi
 
@@ -102,6 +103,15 @@ while sleep $SYNC_FREQ ; do
     # Dont start too many rsync tasks at once. Limit based on # CPU thread
     #     cpu_count=$(cat /proc/cpuinfo|grep processor | wc -l)
     #     let max_threads=cpu_count*30
+    #!/bin/bash
+
+    # Generate random number between 1 and 10 and use it as sleep value eto simulate random write acces to filesystem
+# use another andome number to fake differnet file sizes
+#should be able to force script to run recursively and can then compare it to the parralel option. Should be abel to hit the mds less this way.
+# This script should write to  files of random size and radnom times as well as read random files at random times.
+# Do one pass of multiple dirs and file names lke {A,B,C,D,E}/{1,2,3,4,5,6,7,8,9,10}.img (mkdir and touch)
+# then read and wirte chucks randoly.
+
 done
 
 
