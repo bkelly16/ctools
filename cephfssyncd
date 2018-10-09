@@ -70,7 +70,7 @@ while sleep $SYNC_FREQ ; do
     ### Every SYNC_FREQ seconds daemon will check for changes.
     ## 
     # IF THERE IS NO PAST RCTIME THEN ASSUME ZER0
-    # SETTING RCTIME_0 TO ZERO WILL TRIGGER A SYNC OF THE WHOLE FS
+    # SETTING RCTIME_0 TO ZERO SHOULD TRIGGER A SYNC OF THE WHOLE FS
     # SETTING IT TO THE CURRENT RCTIME 
     # OF THE TOP LEVEL DIR WILL START SUBDIR SYNCS ASYNCHROUNSLY WHEN CHANGES OCCUR
     # RECOMMENDED TO LET A FULL SYNC GO FOR FRIST RUN (i.e RCTIME_0=0)  
@@ -103,15 +103,7 @@ while sleep $SYNC_FREQ ; do
     # Dont start too many rsync tasks at once. Limit based on # CPU thread
     #     cpu_count=$(cat /proc/cpuinfo|grep processor | wc -l)
     #     let max_threads=cpu_count*30
-    #!/bin/bash
-
-    # Generate random number between 1 and 10 and use it as sleep value eto simulate random write acces to filesystem
-# use another andome number to fake differnet file sizes
-#should be able to force script to run recursively and can then compare it to the parralel option. Should be abel to hit the mds less this way.
-# This script should write to  files of random size and radnom times as well as read random files at random times.
-# Do one pass of multiple dirs and file names lke {A,B,C,D,E}/{1,2,3,4,5,6,7,8,9,10}.img (mkdir and touch)
-# then read and wirte chucks randoly.
-
+    
 done
 
 

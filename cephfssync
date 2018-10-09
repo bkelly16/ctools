@@ -10,7 +10,5 @@ if [ "$MODE" == "init" ];then
     echo "rsync -a -f "+ */" -f "- *" $LOCAL_DIR $RECV_HOST:$RECV_DIR"
 elif [ "$MODE" == "sync" ];then
     rsync -av -f "- /*/*/" $LOCAL_DIR/ $RECV_HOST:$RECV_DIR$LOCAL_DIR
-    echo "rsync -av -f "- /*/*/" $LOCAL_DIR/ $RECV_HOST:$RECV_DIR$LOCAL_DIR"
+    echo "rsync -a -f "- /*/*/" $LOCAL_DIR/ $RECV_HOST:$RECV_DIR$LOCAL_DIR"
 fi
-
-
