@@ -1,8 +1,8 @@
 #!/bin/bash
 # Brett Kelly
-
+CONF_DIR="/root/.cephfs/cephfssyncd.conf"
 mkdir -p /var/lib/ceph/cephfssync/
-source ~/.cephfs/cephfssyncd.conf
+source $CONF_DIR
 
 ## CHECKS
 # check cluster membership & permission
@@ -30,7 +30,18 @@ getfiles(){
     local files=$(getfattr --absolute-names -n ceph.dir.files $1 --only-values)
     echo "$files"
 }
+takesnap(){
+    # takesnap <rctime>
+    # Creates snapshot and appends timestamp to name, updates last_rctime to the moment after the snapshot
+    # Returns snapshot directory to sync from
+    local RCTIME_1=$1
+    local SNAP_DIR="$SND_SYNC_DIR/.snap/$RCTIME_1"
+    mkdir $SNAP_DIR 
+    echo "$SNAP_DIR"
+}
 formattime(){
+    # converts epoch time to human readable
+    # for logging purposes only
     local EPOCH=$1
     local TIME=$(date -d @$EPOCH '+%Y-%m-%d %H:%M:%S')
     echo $TIME
@@ -51,13 +62,14 @@ main(){
             if [ "$RCTIME_1" -eq "$RCTIME_0" ];then
                 log "CHANGE DETECTED IN $dir" 0
                 if [ $(getfiles $dir) -gt 0 ];then 
-                    cephfssync $dir $RECV_SYNC_HOST $RECV_SYNC_DIR sync &
+                    cephfssync $dir $RECV_SYNC_HOST $RECV_SYNC_DIR sync $RCTIME_1 &
                 fi
                 main $RCTIME_0 $dir
             elif [ "$RCTIME_1" -lt "$RCTIME_0" ];then
                 log "NO CHANGE DETECTED IN $dir OR BELOW" 1
             elif [ "$RCTIME_1" -gt "$RCTIME_0" ];then
                 log "$dir WAS MODIFIED AFTER STARTING CHECK. WAIT FOR NEXT CYCLE" 0
+                log "This really should not happen if syncing from a snapshot" 0
             fi
         fi
     done
@@ -65,40 +77,36 @@ main(){
 
 # START HERE
 log "started" 0
+SYNC_FREQ=5
 while sleep $SYNC_FREQ ; do
+    SYNC_FREQ=$(cat $CONF_DIR | grep "SYNC_FREQ" | cut -d= -f2)
     log "watching : $SND_SYNC_DIR" 1
-    ### Every SYNC_FREQ seconds daemon will check for changes.
-    ## 
-    # IF THERE IS NO PAST RCTIME THEN ASSUME ZER0
-    # SETTING RCTIME_0 TO ZERO SHOULD TRIGGER A SYNC OF THE WHOLE FS
-    # SETTING IT TO THE CURRENT RCTIME 
-    # OF THE TOP LEVEL DIR WILL START SUBDIR SYNCS ASYNCHROUNSLY WHEN CHANGES OCCUR
-    # RECOMMENDED TO LET A FULL SYNC GO FOR FRIST RUN (i.e RCTIME_0=0)  
     if [ -e /var/lib/ceph/cephfssync/last_rctime ];then
         log "last_rctime exists, init RCTIME=last_rctime" 2
         RCTIME_0=$(cat /var/lib/ceph/cephfssync/last_rctime)
     else
         log "last_rctime does not exist, init RCTIME=0" 2
         RCTIME_0=0
-        #echo "$RCTIME_0" > /var/lib/ceph/cephfssync/last_rctime
     fi
-    log "rctime_0 : $RCTIME_0 " 2
-
     RCTIME_1=$(getrctime $SND_SYNC_DIR 1)
-    echo "$RCTIME_1" > /var/lib/ceph/cephfssync/last_rctime
+    log "rctime_0 : $RCTIME_0 " 2
     log "rctime_1 : $RCTIME_1 " 2
     
     if [ "$RCTIME_1" -gt "$RCTIME_0" ];then
         log "CHANGE DETECTED IN $SND_SYNC_DIR" 0
-        cephfssync $SND_SYNC_DIR $RECV_SYNC_HOST $RECV_SYNC_DIR init
+        SNAP_DIR=$(takesnap $RCTIME_1)
+        RCTIME_SNAP=$(getrctime $SND_SYNC_DIR 1)
+        echo "$RCTIME_SNAP" > /var/lib/ceph/cephfssync/last_rctime
+        /usr/bin/cephfssync $SNAP_DIR $RECV_SYNC_HOST $RECV_SYNC_DIR init $RCTIME_1
         if [ $(getfiles $SND_SYNC_DIR) -gt 0 ];then
-            cephfssync $SND_SYNC_DIR $RECV_SYNC_HOST $RECV_SYNC_DIR sync &
+            /usr/bin/cephfssync $SNAP_DIR $RECV_SYNC_HOST $RECV_SYNC_DIR sync $RCTIME_1 &
         fi
-        main $RCTIME_1 $SND_SYNC_DIR
+        main $RCTIME_1 $SNAP_DIR
     fi
-
-    # If changes were detected kick off (parallel)? rsync of that dir to the recv. 
-    # Wait 1 second after starting rsync to ensure directory is created so next level doesnt fail
+    syncwatcher $RCTIME_1 $SNAP_DIR &
+    
+    ## If changes were detected kick off (parallel)? rsync of that dir to the recv. 
+    #  -- Complete. Single threaded rsync per subdir, but running multiple subdir sync at once.
     # If directory is already currently syncing dont start again
     # Dont start too many rsync tasks at once. Limit based on # CPU thread
     #     cpu_count=$(cat /proc/cpuinfo|grep processor | wc -l)

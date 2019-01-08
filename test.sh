@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Generate random number between 1 and 10 and use it as sleep value to simulate random write acces to filesystem
+# Generate random number between 1 and DIR_DEPTH and use it as sleep value to simulate random IO access to filesystem
 # use another andome number to fake differnet file sizes
 # should be able to force script to run recursively and can then compare it to the parralel option. Should be able to hit the mds less this way.
 # This script should write to  files of random size and radnom times as well as read random files at random times.

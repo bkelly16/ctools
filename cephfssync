@@ -3,12 +3,24 @@ LOCAL_DIR=$1
 RECV_HOST=$2
 RECV_DIR=$3
 MODE=$4
+RCTIME=$5
 #echo "ls -1 $LOCAL_DIR | xargs -I {} -P 5 -n 1 rsync -avh --progress $LOCAL_DIR/{} $RECV_DIR"
 
 if [ "$MODE" == "init" ];then
-    rsync -a -f "+ */" -f "- *" $LOCAL_DIR $RECV_HOST:$RECV_DIR
-    echo "rsync -a -f "+ */" -f "- *" $LOCAL_DIR $RECV_HOST:$RECV_DIR"
+    # sync entire directory tree. Do not include any files.
+    # possible that this will defeat the whole point of only syncing changes. Need to test at scale
+    # currently neccesary to allow us to sync just the subdirs files. This guarentees the location exists when syncing the subdirs.
+    rsync -a -f "+ */" -f "- *" $LOCAL_DIR/ $RECV_HOST:$RECV_DIR
+    echo "rsync -a -f "+ */" -f "- *" $LOCAL_DIR/ $RECV_HOST:$RECV_DIR"
 elif [ "$MODE" == "sync" ];then
-    rsync -av -f "- /*/*/" $LOCAL_DIR/ $RECV_HOST:$RECV_DIR$LOCAL_DIR
-    echo "rsync -a -f "- /*/*/" $LOCAL_DIR/ $RECV_HOST:$RECV_DIR$LOCAL_DIR"
+    RELATIVE_DIR=$(sed "s/\<$RCTIME\>/&\/./" <<< $LOCAL_DIR)
+    echo "rsync -a -f "- /*/*/" --relative $RELATIVE_DIR $RECV_HOST:$RECV_DIR"
+    rsync -a -f "- /*/*/" --relative $RELATIVE_DIR $RECV_HOST:$RECV_DIR
+    if [ "$?" -eq "0" ];then
+        echo "sycing $LOCAL_DIR succeded"
+    else
+        echo "syncing $LOCAL_DIR failed"
+    fi
 fi
+
+# /cephfs/.snap/sync_1234567/./

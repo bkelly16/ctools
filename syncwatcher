@@ -1,0 +1,19 @@
+#!/bin/bash
+RCTIME_1=$1
+SNAP_DIR=$2
+# watch for # of sync jobs 
+# if zero rmdir snap and exit
+# if not zero wait 5 seconds and check again
+while sleep 1;do
+    num_jobs=$(ps aux | grep rsync | grep $RCTIME_1 | wc -l)
+    echo "NUMBER OF ACTIVE SYNC TASKS : $RCTIME_1 $num_jobs"
+    if [ $num_jobs -eq 0 ];then
+        echo "REMOVING SNAP $RCTIME_1"
+        echo "rmdir $SNAP_DIR"
+        rmdir $SNAP_DIR
+        exit 0
+    else
+        echo "ACTIVE SYNC RUNNING. WAIT 5s AND CHECK AGAIN"
+        sleep 4
+    fi
+done 
